@@ -509,6 +509,26 @@ def test_metrics_curve_flattened_area(client):
     assert abs(body["centroid"]["y"]) < 1e-9
 
 
+def test_metrics_far_from_origin_centroid(client):
+    # 回归：10×10 方形放在 (1e9, 1e9)，质心为 (1e9+5, 1e9+5) 而非
+    # 被绝对坐标面积矩的大数相消推离（曾返回约 1186666680.32）
+    pid = _mk(client, "M1000000000,1000000000h10v10h-10Z")
+    body = client.post(f"/paths/{pid}/metrics").json()
+    assert body["area"] == 100.0
+    assert body["centroid"] == {"x": 1000000005.0, "y": 1000000005.0}
+    assert body["contours"][0]["centroid"] == {"x": 1000000005.0,
+                                               "y": 1000000005.0}
+    # 偏心孔组合整体平移 1e9：净质心与原点附近结果一致
+    pid0 = _mk(client, "M0,0h10v10h-10Z M6,2h2v2h-2Z")
+    pid1 = _mk(client, "M1000000000,1000000000h10v10h-10Z "
+                       "M1000000006,1000000002h2v2h-2Z")
+    b0 = client.post(f"/paths/{pid0}/metrics").json()
+    b1 = client.post(f"/paths/{pid1}/metrics").json()
+    assert b1["area"] == b0["area"] == 96.0
+    assert abs(b1["centroid"]["x"] - (b0["centroid"]["x"] + 1e9)) < 1e-6
+    assert abs(b1["centroid"]["y"] - (b0["centroid"]["y"] + 1e9)) < 1e-6
+
+
 def test_metrics_is_readonly_and_needs_no_prior_normalization(client):
     pid = _mk(client, "M0,0h10v10h-10Z M2,2h6v6h-6Z")
     assert client.get(f"/paths/{pid}").json()["normalized"] is None

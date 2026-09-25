@@ -160,3 +160,52 @@ def test_no_negative_zero_in_output():
     m, _ = _metrics("M-1,0 A1,1 0 1,0 1,0 A1,1 0 1,0 -1,0 Z")
     s = repr(m)
     assert "-0.0" not in s
+
+
+def test_far_from_origin_single_ring_centroid():
+    # 回归：10×10 方形放在 (1e9, 1e9)，面积仍为 100，质心必须精确为
+    # (1e9+5, 1e9+5)——绝对坐标面积矩的大数相消曾把质心推离近 2e8
+    m, _ = _metrics("M1000000000,1000000000h10v10h-10Z")
+    assert m["area"] == 100.0
+    assert m["centroid"] == {"x": 1000000005.0, "y": 1000000005.0}
+    assert m["contours"][0]["centroid"] == {"x": 1000000005.0,
+                                            "y": 1000000005.0}
+
+
+def test_far_from_origin_eccentric_hole_matches_origin():
+    # 偏心孔组合整体平移 1e9：净质心与逐环质心都和原点附近结果一致
+    m0, _ = _metrics("M0,0h10v10h-10Z M6,2h2v2h-2Z")
+    m1, _ = _metrics("M1000000000,1000000000h10v10h-10Z "
+                     "M1000000006,1000000002h2v2h-2Z")
+    assert m1["area"] == m0["area"] == 96.0
+    assert math.isclose(m1["centroid"]["x"], m0["centroid"]["x"] + 1e9,
+                        abs_tol=1e-6)
+    assert math.isclose(m1["centroid"]["y"], m0["centroid"]["y"] + 1e9,
+                        abs_tol=1e-6)
+    for it0, it1 in zip(m0["contours"], m1["contours"]):
+        assert math.isclose(it1["centroid"]["x"], it0["centroid"]["x"] + 1e9,
+                            abs_tol=1e-6)
+        assert math.isclose(it1["centroid"]["y"], it0["centroid"]["y"] + 1e9,
+                            abs_tol=1e-6)
+
+
+def test_far_from_origin_hole_island_alternation():
+    # 外-孔-岛三层交替在 1e9 处仍与原点附近一致（净质心偏向小岛）
+    m0, _ = _metrics("M0,0h10v10h-10Z M1,1h8v8h-8Z M6,6h2v2h-2Z")
+    m1, _ = _metrics("M1000000000,1000000000h10v10h-10Z "
+                     "M1000000001,1000000001h8v8h-8Z "
+                     "M1000000006,1000000006h2v2h-2Z")
+    assert m1["area"] == m0["area"] == 40.0
+    assert math.isclose(m1["centroid"]["x"], m0["centroid"]["x"] + 1e9,
+                        abs_tol=1e-6)
+    assert math.isclose(m1["centroid"]["y"], m0["centroid"]["y"] + 1e9,
+                        abs_tol=1e-6)
+
+
+def test_polygon_centroid_far_from_origin():
+    # 直接对多边形验证：1e9 处 10×10 方环质心精确为 (1e9+5, 1e9+5)，方向无关
+    pts_cw = [(1e9, 1e9), (1e9 + 10, 1e9),
+              (1e9 + 10, 1e9 + 10), (1e9, 1e9 + 10)]
+    pts_ccw = list(reversed(pts_cw))
+    assert polygon_centroid(pts_cw) == (1000000005.0, 1000000005.0)
+    assert polygon_centroid(pts_ccw) == (1000000005.0, 1000000005.0)

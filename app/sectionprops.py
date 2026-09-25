@@ -22,8 +22,9 @@ metrics / clearance / scanlines 等同一份解析与曲线细分折线，见
 按 SVG 屏幕坐标（y 轴向下）从 +x 朝 +y 计量，取值 [0, 180) 度；
 两个主值相等（各向同性，如正方形、圆）时主轴不唯一，约定返回 0°。
 
-- 每环先绕**自身质心**积分，再按平行轴定理搬到净质心合成，避免
-  远离原点的大坐标相消误差；方向符号归一后结果与环的书写方向无关；
+- 一阶面积矩在统一**局部参考点**下累加（与 metrics 同口径），
+  每环二阶矩先绕**自身质心**积分，再按平行轴定理搬到净质心合成，
+  避免远离原点的大坐标相消误差；方向符号归一后结果与环的书写方向无关；
 - 开放（``open``）与退化（``degenerate``）轮廓不参与，列入
   ``skipped_contours``；
 - 净填充面积为零（空路径、仅开放/退化轮廓，或净面积被孔洞完全
@@ -69,10 +70,14 @@ def compute_section_properties(contours: list[Contour]) -> dict[str, Any]:
     eps = _AREA_EPS * scale ** 2
 
     total_area = 0.0
-    moment_x = 0.0  # Σ sign·A·cx（对 y 轴的一阶面积矩）
-    moment_y = 0.0  # Σ sign·A·cy（对 x 轴的一阶面积矩）
+    moment_x = 0.0  # Σ sign·A·(cx−ref_x)，统一局部参考点下对 y 轴的一阶面积矩
+    moment_y = 0.0  # Σ sign·A·(cy−ref_y)，统一局部参考点下对 x 轴的一阶面积矩
     rings: list[dict[str, float]] = []
     items: list[dict[str, Any]] = []
+
+    # 与 metrics 同口径：一阶面积矩在统一局部参考点（首个有效环的
+    # 首顶点）下累加，避免远离原点时大数相消吞掉偏心孔的微小净矩
+    ref_x, ref_y = valid[0].points[0] if valid else (0.0, 0.0)
 
     for c in valid:
         sign = 1.0 if c.role == "outer" else -1.0
@@ -81,8 +86,8 @@ def compute_section_properties(contours: list[Contour]) -> dict[str, Any]:
         ixx, iyy, ixy = _ring_second_moments(c.points, cx, cy, c.area)
         signed_contrib = sign * ring_area
         total_area += signed_contrib
-        moment_x += signed_contrib * cx
-        moment_y += signed_contrib * cy
+        moment_x += signed_contrib * (cx - ref_x)
+        moment_y += signed_contrib * (cy - ref_y)
         rings.append({"sign": sign, "area": ring_area, "cx": cx, "cy": cy,
                       "ixx": ixx, "iyy": iyy, "ixy": ixy})
         items.append({
@@ -115,8 +120,8 @@ def compute_section_properties(contours: list[Contour]) -> dict[str, Any]:
             "skipped_contours": skipped,
         }
 
-    cx_net = moment_x / total_area
-    cy_net = moment_y / total_area
+    cx_net = ref_x + moment_x / total_area
+    cy_net = ref_y + moment_y / total_area
 
     # 平行轴定理：各环绕自身质心的二阶矩搬到净填充质心后交替代数合成
     ix = iy = ixy_net = 0.0

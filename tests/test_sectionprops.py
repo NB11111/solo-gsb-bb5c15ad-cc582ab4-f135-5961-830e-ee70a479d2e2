@@ -262,6 +262,22 @@ def test_far_from_origin_no_cancellation_error():
     assert m["principal"]["axis_angle_deg"] == 0.0
 
 
+def test_far_from_origin_centroid_translation_invariant():
+    # 偏心孔组合整体平移 1e9：净质心随动 1e9，惯性矩与原点附近逐位一致
+    m0, _ = _sp("M0,0h10v10h-10Z M6,2h2v2h-2Z")
+    m1, _ = _sp("M1000000000,1000000000h10v10h-10Z "
+                "M1000000006,1000000002h2v2h-2Z")
+    assert m1["area"] == m0["area"] == 96.0
+    assert math.isclose(m1["centroid"]["x"], m0["centroid"]["x"] + 1e9,
+                        abs_tol=1e-6)
+    assert math.isclose(m1["centroid"]["y"], m0["centroid"]["y"] + 1e9,
+                        abs_tol=1e-6)
+    assert m1["ix"] == m0["ix"]
+    assert m1["iy"] == m0["iy"]
+    assert m1["ixy"] == m0["ixy"]
+    assert m1["principal"] == m0["principal"]
+
+
 def test_no_negative_zero_in_output():
     m, _ = _sp("M-1,0 A1,1 0 1,0 1,0 A1,1 0 1,0 -1,0 Z")
     assert "-0.0" not in repr(m)
