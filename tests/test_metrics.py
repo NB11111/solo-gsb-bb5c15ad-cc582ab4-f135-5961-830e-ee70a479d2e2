@@ -146,6 +146,46 @@ def test_centroid_negative_coordinates():
     assert m["centroid"] == {"x": 0.0, "y": 0.0}
 
 
+def test_far_from_origin_square_centroid():
+    # 回归：10×10 方形置于 (1e9, 1e9)，面积仍为 100，质心必须精确落在
+    # 几何中心——绝对坐标面积矩（≈1e18 叉积）相消曾把质心拖到 1.19e9
+    m, _ = _metrics("M1000000000,1000000000h10v10h-10Z")
+    assert m["area"] == 100.0
+    assert m["centroid"] == {"x": 1000000005.0, "y": 1000000005.0}
+    assert m["contours"][0]["centroid"] == {"x": 1000000005.0,
+                                            "y": 1000000005.0}
+
+
+def test_far_from_origin_eccentric_hole_matches_origin():
+    # 回归：偏心孔组合整体平移 1e9 后，净面积不变、净质心精确同步平移
+    m_near, _ = _metrics("M0,0h10v10h-10Z M7,1h2v2h-2Z")
+    m_far, _ = _metrics("M1000000000,1000000000h10v10h-10Z "
+                        "M1000000007,1000000001h2v2h-2Z")
+    assert m_near["area"] == 96.0
+    assert m_near["centroid"] == {"x": 4.875, "y": 5.125}
+    assert m_far["area"] == m_near["area"]
+    assert m_far["centroid"]["x"] == m_near["centroid"]["x"] + 1e9
+    assert m_far["centroid"]["y"] == m_near["centroid"]["y"] + 1e9
+
+
+def test_far_from_origin_hole_island_matches_origin():
+    # 外-孔-岛三层交替在远坐标下与原点附近结果一致（仅整体平移 1e9）
+    m_near, _ = _metrics("M0,0h10v10h-10Z M1,1h8v8h-8Z M6,6h2v2h-2Z")
+    m_far, _ = _metrics("M1000000000,1000000000h10v10h-10Z "
+                        "M1000000001,1000000001h8v8h-8Z "
+                        "M1000000006,1000000006h2v2h-2Z")
+    assert m_far["area"] == m_near["area"] == 40.0
+    assert m_far["centroid"]["x"] == m_near["centroid"]["x"] + 1e9
+    assert m_far["centroid"]["y"] == m_near["centroid"]["y"] + 1e9
+
+
+def test_polygon_centroid_far_from_origin():
+    # 单环质心直接验证：远坐标正方形的质心即其几何中心
+    pts = [(1e9, 1e9), (1e9 + 10, 1e9), (1e9 + 10, 1e9 + 10), (1e9, 1e9 + 10)]
+    cx, cy = polygon_centroid(pts)
+    assert (cx, cy) == (1e9 + 5.0, 1e9 + 5.0)
+
+
 def test_polygon_centroid_direction_independent():
     pts_cw = [(0, 0), (10, 0), (10, 10), (0, 10)]
     pts_ccw = list(reversed(pts_cw))

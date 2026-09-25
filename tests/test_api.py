@@ -520,6 +520,31 @@ def test_metrics_is_readonly_and_needs_no_prior_normalization(client):
     assert b1 == b2
 
 
+def test_metrics_far_from_origin_centroid(client):
+    # 回归：10×10 方形置于 (1e9, 1e9)，质心不被大坐标相消误差拖走
+    pid = _mk(client, "M1000000000,1000000000h10v10h-10Z")
+    r = client.post(f"/paths/{pid}/metrics")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["area"] == 100.0
+    assert body["centroid"] == {"x": 1000000005.0, "y": 1000000005.0}
+    assert body["contours"][0]["centroid"] == {"x": 1000000005.0,
+                                               "y": 1000000005.0}
+
+
+def test_metrics_translated_eccentric_hole_consistent(client):
+    # 回归：偏心孔组合整体平移 1e9 后与原点附近结果一致（仅同步平移）
+    near_id = _mk(client, "M0,0h10v10h-10Z M7,1h2v2h-2Z")
+    far_id = _mk(client, "M1000000000,1000000000h10v10h-10Z "
+                         "M1000000007,1000000001h2v2h-2Z")
+    near = client.post(f"/paths/{near_id}/metrics").json()
+    far = client.post(f"/paths/{far_id}/metrics").json()
+    assert near["centroid"] == {"x": 4.875, "y": 5.125}
+    assert far["area"] == near["area"] == 96.0
+    assert far["centroid"]["x"] == near["centroid"]["x"] + 1e9
+    assert far["centroid"]["y"] == near["centroid"]["y"] + 1e9
+
+
 def test_metrics_404(client):
     r = client.post("/paths/999999/metrics")
     assert r.status_code == 404
